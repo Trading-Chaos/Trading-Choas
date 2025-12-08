@@ -2,7 +2,7 @@ from __future__ import annotations
 import copy
 import optuna
 from .backtester import Backtester
-from .metrics import mar, sharpe, profit_factor
+from ..metrics import mar, sharpe, profit_factor
 
 def _apply(cfg: dict, dotted_key: str, value):
     keys = dotted_key.split(".")
