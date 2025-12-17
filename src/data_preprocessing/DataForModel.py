@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import RobustScaler
+import os
 
 def preprocess_dataset(df):
 
@@ -71,3 +72,14 @@ def split_data(df, target, val_size=0.1, test_size=0.2, random_state=42, split_t
         X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, test_size=(test_size / (val_size + test_size)), random_state=random_state)
         return X_train, X_val, X_test, y_train, y_val, y_test
     
+
+def append_results(results: dict, path="/Users/side/Desktop/Trading Chaos AI/df/results/Results.csv"):
+   
+    results_df = pd.DataFrame([results])
+
+    if os.path.exists(path):
+        results_df.to_csv(path, mode="a", header=False, index=False)
+    else:
+        results_df.to_csv(path, mode="w", header=True, index=False)
+
+    print(f"Results appended to {path}")
