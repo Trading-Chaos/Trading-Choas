@@ -1,6 +1,8 @@
-import pandas as pd
 import numpy as np
+import pandas as pd
+from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import RobustScaler
+
 
 def preprocess_dataset(df):
 
@@ -8,10 +10,6 @@ def preprocess_dataset(df):
 
     df['DateTime'] = pd.to_datetime(df['DateTime'])
     df = df.drop(columns=["DateTime"])
-
-    df["AddOn_Size_Pct"] = df["AddOn_Size_Pct"].fillna(0.3)
-    df["AddOn_Anchor_Level"] = df["AddOn_Anchor_Level"].fillna(0.0)
-    df["AddOn_Anchor_IsUp"] = df["AddOn_Anchor_IsUp"].fillna(0)
 
     df = df.dropna(subset=[
         "AddOn_Anchor_Level",
@@ -54,8 +52,6 @@ def build_target(df: pd.DataFrame, h: int = 20, target_type: str = "classificati
     df = df.dropna(subset=["Close_fwd"])
 
     return df
-
-from sklearn.model_selection import train_test_split
 
 def split_data(df, target, val_size=0.1, test_size=0.2, random_state=42, split_type="train_test"):
     
