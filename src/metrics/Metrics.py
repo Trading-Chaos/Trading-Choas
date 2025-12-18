@@ -1,43 +1,41 @@
-import pandas as pd
 import numpy as np
+from sklearn.metrics import confusion_matrix, recall_score, precision_score
 
-def summarize(bt: pd.DataFrame, trades: list):
-    res = {}
-    res["final_equity"] = float(bt["Equity"].iloc[-1])
+def ttp_metrics(
+    y_true,
+    y_pred,
+    labels=(0, 1, 2, 3)
+):
+    metrics = {}
 
-    # --- устойчивый расчёт CAGR ---
-    dt = pd.to_datetime(bt["DateTime"], errors="coerce")
-    # используем первые и последние валидные значения
-    valid = dt.notna()
-    if valid.sum() >= 2:
-        t0 = dt[valid].iloc[0]
-        t1 = dt[valid].iloc[-1]
-        seconds = (t1 - t0).total_seconds()
-        years = max(seconds / (365.25 * 24 * 3600), 1e-9)
-        res["CAGR"] = res["final_equity"] ** (1 / years) - 1
-    else:
-        # fallback: если времени нет, оценим по числу баров (без календарной привязки)
-        bars = len(bt)
-        # допустим дневные данные: 252 бара в год; при другом ТФ поменяй коэффициент
-        years = max(bars / 252.0, 1e-9)
-        res["CAGR"] = res["final_equity"] ** (1 / years) - 1
+    cm = confusion_matrix(y_true, y_pred, labels=labels)
+    metrics["confusion_matrix"] = cm
 
-    # --- макс. просадка ---
-    roll_max = bt["Equity"].cummax()
-    dd = bt["Equity"] / roll_max - 1.0
-    res["MaxDD"] = float(dd.min())
+    recall_vals = recall_score(
+        y_true,
+        y_pred,
+        labels=[0, 1],
+        average=None,
+        zero_division=0
+    )
 
-    # --- сделки ---
-    res["NumTrades"] = len(trades)
-    if trades:
-        wins, rets = 0, []
-        for t in trades:
-            r = (t["exit_price"]/t["entry_price"] - 1.0) if t["side"]=="LONG" else (t["entry_price"]/t["exit_price"] - 1.0)
-            rets.append(r)
-            if r > 0: wins += 1
-        res["WinRate"] = wins / len(trades)
-        res["AvgTradeRet"] = float(np.mean(rets))
-        res["MedianTradeRet"] = float(np.median(rets))
-    else:
-        res["WinRate"] = res["AvgTradeRet"] = res["MedianTradeRet"] = np.nan
-    return res
+    metrics["recall_fast"] = recall_vals[0]
+    metrics["recall_mid"] = recall_vals[1]
+    metrics["recall_fast_mid_mean"] = recall_vals.mean()
+
+    precision_np = precision_score(
+        y_true,
+        y_pred,
+        labels=[3],
+        average=None,
+        zero_division=0
+    )
+
+    metrics["precision_no_profit"] = precision_np[0]
+
+    metrics["support_fast"] = np.sum(y_true == 0)
+    metrics["support_mid"] = np.sum(y_true == 1)
+    metrics["support_slow"] = np.sum(y_true == 2)
+    metrics["support_no_profit"] = np.sum(y_true == 3)
+
+    return metrics
