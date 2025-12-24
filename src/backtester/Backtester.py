@@ -1,17 +1,16 @@
 import pandas as pd
 import numpy as np
- 
-# -------- Флаги отладки --------
+name = "AFKS"
+df: pd.DataFrame = pd.read_csv(f"/Users/side/Desktop/Trading Chaos AI/df/clean_df/{name}.csv")
+
 CHECKS = True  # поставить False, если не нужны проверки ГО/добора
 
-# -------- Параметры инструмента --------
 TICK_SIZE    = 0.01
 TICK_VALUE   = 7.94715
 MULTIPLIER   = TICK_VALUE / TICK_SIZE      # ≈ 794.715 / 1.0 цены (или 808.61, если так в спецификации)
 GO_LONG      = 8_171.27
 GO_SHORT     = 8_299.81
 
-# -------- Торговые параметры --------
 START_EQUITY       = 100_000.0
 STOP_RISK_PCT_MAIN = 0.02        # 2% риска на основную ногу
 STOP_RISK_PCT_ADD  = 0.02        # 2% риска на добор
@@ -34,7 +33,6 @@ def fee_cash(qty: float) -> float:
     return float(qty) * FEE_PER_SIDE_PER_CONTRACT
 
 
-# -------- Подготовка данных --------
 df_bt = df.copy().sort_values("DateTime").reset_index(drop=True)
 df_bt["DateTime"] = pd.to_datetime(df_bt["DateTime"], errors="coerce")
 df_bt = df_bt[df_bt["DateTime"].notna()].reset_index(drop=True)
@@ -48,11 +46,9 @@ miss = [c for c in req if c not in df_bt.columns]
 if miss:
     raise ValueError(f"Нет колонок: {miss}")
 
-# подтверждённые фракталы (через 2 бара)
 df_bt["Fractal_Up_conf"]   = df_bt["Fractal_Up"].shift(2).fillna(0).astype(int)
 df_bt["Fractal_Down_conf"] = df_bt["Fractal_Down"].shift(2).fillna(0).astype(int)
 
-# --- Аллигатор и flip-выход ---
 lips  = df_bt["Alligator_Lips"]
 teeth = df_bt["Alligator_Teeth"]
 jaw   = df_bt["Alligator_Jaw"]
@@ -120,7 +116,6 @@ def check_margin_and_addon(equity_before_fee, pos, units_main, units_add):
         )
 
 
-# -------- Бэктест --------
 equity = START_EQUITY
 equity_curve, trades = [], []
 
@@ -158,7 +153,6 @@ for i in range(len(df_bt)):
         df_bt.at[i, "Close"]
     ])
 
-    # 0) pending-вход (на следующем баре)
     if (not in_trade) and (pending is not None) and (i == pending["idx"] + 1):
         side, level = pending["side"], pending["level"]
         trig = (side == 1 and hi >= level) or (side == -1 and lo <= level)
@@ -167,11 +161,8 @@ for i in range(len(df_bt)):
             fill = max(level, op) if side == 1 else min(level, op)
             go_side = go_for_side(side)
 
-            # общий лимит по ГО
             max_margin_total = equity * EXPOSURE_FRACTION * MAX_LEVERAGE
 
-            # ЧАСТЬ лимита отдаём под основную ногу,
-            # остальное оставляем под добор (ADDON_RATIO)
             margin_for_main = max_margin_total / (1.0 + ADDON_RATIO)
 
             max_qty_main_by_go = np.floor(margin_for_main / go_side)
@@ -179,7 +170,6 @@ for i in range(len(df_bt)):
             if max_qty_main_by_go >= 1:
                 units_main = float(max_qty_main_by_go)
 
-                # проверка ГО до списания комиссии
                 check_margin_and_addon(
                     equity_before_fee=equity,
                     pos=side,
@@ -311,13 +301,11 @@ for i in range(len(df_bt)):
             equity_curve.append(equity)
             continue
 
-    # 2) MTM (если стопы не сработали)
     if i > 0 and in_trade:
         total_units = units_main + units_add
         equity += (cl - prev_close) * total_units * pos * MULTIPLIER
     prev_close = cl
 
-    # 3) Плановый выход по flip — закрываем оставшиеся ноги
     ex = int(df_bt.at[i, "ExitSignal"])
     if in_trade and ((pos == 1 and ex == 1) or (pos == -1 and ex == -1)):
         exit_price = px_exit(i)
@@ -375,7 +363,6 @@ for i in range(len(df_bt)):
         equity_curve.append(equity)
         continue
 
-    # 4) Добор на первом подтверждённом фрактале (с учётом ГО и минимального хода)
     if in_trade and wait_addon and (not addon_done):
         upc = int(df_bt.at[i, "Fractal_Up_conf"])
         dnc = int(df_bt.at[i, "Fractal_Down_conf"])
@@ -455,7 +442,6 @@ for i in range(len(df_bt)):
             addon_done = True
             wait_addon = False
 
-    # 5) Новая pending-заявка на вход
     if (not in_trade) and (pending is None) and ex == 0:
         s = int(df_bt.at[i, "EntrySignal"])
         if s != 0 and i + 1 < len(df_bt):
@@ -465,7 +451,6 @@ for i in range(len(df_bt)):
     equity_curve.append(equity)
 
 
-# -------- Статистика --------
 bt = df_bt[["DateTime"]].copy()
 bt["Equity"] = equity_curve
 

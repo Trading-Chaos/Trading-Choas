@@ -39,3 +39,27 @@ def ttp_metrics(
     metrics["support_no_profit"] = np.sum(y_true == 3)
 
     return metrics
+
+def merged_metrics(y_true, y_pred):
+
+    metrics = {}
+
+    metrics["confusion_matrix"] = confusion_matrix(
+        y_true, y_pred, labels=[0,1,2]
+    )
+
+    metrics["recall_good"] = recall_score(
+        y_true, y_pred,
+        labels=[0],
+        average=None,
+        zero_division=0
+    )[0]
+
+    metrics["precision_no_profit"] = precision_score(
+        y_true, y_pred,
+        labels=[2],
+        average=None,
+        zero_division=0
+    )[0]
+
+    return metrics
