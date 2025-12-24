@@ -6,6 +6,9 @@ from typing import List
 from typing import Iterator
 from typing import Tuple
 from preprocessing.target import ttp_target, event_target, hybrid_target
+from datetime import datetime
+import json
+import hashlib
 
 
 def prep(
@@ -18,9 +21,11 @@ def prep(
     step: int,
     horizons=None,
     target_kwargs=None,
-    scale_cols=None
+    scale_cols=None,
+    extra_target_fns=None
 ):
     target_kwargs = target_kwargs or {}
+    extra_target_fns = extra_target_fns or []
 
     df_feat = preprocess_features_only(df)
 
@@ -29,10 +34,14 @@ def prep(
     else:
         df_labeled = target_fn(df_feat, **target_kwargs)
 
+    for fn in extra_target_fns:
+        df_labeled = fn(df_labeled)
+
     if target_name == "ttp":
         leak_cols = get_leak_cols("ttp", horizons)
     else:
         leak_cols = get_leak_cols(target_name, horizons)
+
     for c in leak_cols:
         if c in df_labeled.columns:
             df_labeled = df_labeled.drop(columns=c)
@@ -51,7 +60,7 @@ def prep(
         scaler = None
         if scale_cols:
             X_train, X_test, scaler = scale_train_test(
-                X_train, X_test, scale_cols
+                X_train, X_test
             )
 
         yield X_train, X_test, y_train, y_test, scaler
@@ -133,9 +142,34 @@ def scale_train_test(
 
     return X_train, X_test, scaler
 
+def _hash_params(params: dict) -> str:
+    s = json.dumps(params, sort_keys=True)
+    return hashlib.md5(s.encode()).hexdigest()[:8]
 
-def append_results(results: dict, path="/Users/side/Desktop/Trading Chaos AI/df/results/Results.csv"):
-   
+
+def append_results(
+    results: dict,
+    path="/Users/side/Desktop/Trading Chaos AI/df/results/Results.csv"
+):
+    """
+    results — уже готовый dict из model_zoo
+    """
+
+    results = results.copy()
+
+    # --- META ---
+    results.setdefault("timestamp", datetime.utcnow().isoformat())
+    results.setdefault("run_id", "default")
+    results.setdefault("wfs_step", None)
+
+    # --- MODEL ---
+    if "model_params" in results:
+        results["params_hash"] = _hash_params(results["model_params"])
+        for k, v in results["model_params"].items():
+            results[k] = v
+        del results["model_params"]
+
+    # --- to DataFrame ---
     results_df = pd.DataFrame([results])
 
     if os.path.exists(path):
@@ -143,4 +177,31 @@ def append_results(results: dict, path="/Users/side/Desktop/Trading Chaos AI/df/
     else:
         results_df.to_csv(path, mode="w", header=True, index=False)
 
-    print(f"Results appended to {path}")
+    return results_df
+
+import numpy as np
+from sklearn.metrics import precision_score, recall_score
+
+def eval_thresholds(
+    y_true,
+    y_proba,
+    thresholds=np.arange(0.3, 0.81, 0.05)
+):
+    rows = []
+
+    for thr in thresholds:
+        y_pred = (y_proba >= thr).astype(int)
+
+        coverage = y_pred.mean()  # % разрешённых сделок
+
+        if coverage == 0:
+            continue
+
+        rows.append({
+            "threshold": thr,
+            "coverage": coverage,
+            "precision": precision_score(y_true, y_pred, zero_division=0),
+            "recall": recall_score(y_true, y_pred, zero_division=0),
+        })
+
+    return rows
