@@ -2,11 +2,6 @@ import numpy as np
 import pandas as pd
 from typing import List
 
-
-import numpy as np
-import pandas as pd
-from typing import List
-
 def ttp_target(
     df: pd.DataFrame,
     horizons: List[int] = [12, 24, 48],

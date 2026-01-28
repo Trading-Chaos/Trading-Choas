@@ -2,9 +2,7 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import RobustScaler
 import os
-from typing import List
-from typing import Iterator
-from typing import Tuple
+from typing import List, Iterator, Tuple
 from preprocessing.target import ttp_target, event_target, hybrid_target
 from datetime import datetime
 import json
@@ -22,7 +20,8 @@ def prep(
     horizons=None,
     target_kwargs=None,
     scale_cols=None,
-    extra_target_fns=None
+    extra_target_fns=None,
+    return_indices: bool = False,
 ):
     target_kwargs = target_kwargs or {}
     extra_target_fns = extra_target_fns or []
@@ -50,7 +49,7 @@ def prep(
     if len(obj_cols) > 0:
         df_labeled = df_labeled.drop(columns=obj_cols)
 
-    for X_train, X_test, y_train, y_test in walk_forward_split(
+    for X_train, X_test, y_train, y_test, train_idx, test_idx in walk_forward_split(
         df_labeled,
         target_col=target_col,
         train_size=train_size,
@@ -59,11 +58,12 @@ def prep(
     ):
         scaler = None
         if scale_cols:
-            X_train, X_test, scaler = scale_train_test(
-                X_train, X_test
-            )
+            X_train, X_test, scaler = scale_train_test(X_train, X_test)
 
-        yield X_train, X_test, y_train, y_test, scaler
+        if return_indices:
+            yield X_train, X_test, y_train, y_test, scaler, train_idx, test_idx
+        else:
+            yield X_train, X_test, y_train, y_test, scaler
 
 def preprocess_features_only(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
@@ -71,7 +71,6 @@ def preprocess_features_only(df: pd.DataFrame) -> pd.DataFrame:
     if "DateTime" in df.columns:
         df["DateTime"] = pd.to_datetime(df["DateTime"])
         df = df.sort_values("DateTime").reset_index(drop=True)
-        df = df.drop(columns=["DateTime"])
 
     df = df.dropna(subset=[
         "AddOn_Anchor_Level",
@@ -101,8 +100,7 @@ def walk_forward_split(
     train_size: int,
     test_size: int,
     step: int
-) -> Iterator[Tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]]:
-
+):
     df = df.sort_index()
     n = len(df)
 
@@ -111,13 +109,20 @@ def walk_forward_split(
         train = df.iloc[start : start + train_size]
         test  = df.iloc[start + train_size : start + train_size + test_size]
 
-        X_train = train.drop(columns=[target_col])
+        train_idx = train.index.to_numpy()
+        test_idx  = test.index.to_numpy()
+
+        drop_cols = [target_col]
+        if "DateTime" in train.columns:
+            drop_cols.append("DateTime")
+
+        X_train = train.drop(columns=drop_cols)
         y_train = train[target_col]
 
-        X_test = test.drop(columns=[target_col])
+        X_test = test.drop(columns=drop_cols)
         y_test = test[target_col]
 
-        yield X_train, X_test, y_train, y_test
+        yield X_train, X_test, y_train, y_test, train_idx, test_idx
 
         start += step
 
@@ -157,19 +162,16 @@ def append_results(
 
     results = results.copy()
 
-    # --- META ---
     results.setdefault("timestamp", datetime.utcnow().isoformat())
     results.setdefault("run_id", "default")
     results.setdefault("wfs_step", None)
 
-    # --- MODEL ---
     if "model_params" in results:
         results["params_hash"] = _hash_params(results["model_params"])
         for k, v in results["model_params"].items():
             results[k] = v
         del results["model_params"]
 
-    # --- to DataFrame ---
     results_df = pd.DataFrame([results])
 
     if os.path.exists(path):
@@ -192,7 +194,7 @@ def eval_thresholds(
     for thr in thresholds:
         y_pred = (y_proba >= thr).astype(int)
 
-        coverage = y_pred.mean()  # % разрешённых сделок
+        coverage = y_pred.mean()
 
         if coverage == 0:
             continue
