@@ -24,12 +24,12 @@ def preprocess_dataset(df):
 
     df = build_target(
         df,
-        horizons=horizons
+        horizons=horizons # type: ignore
     )
 
     leak_cols = (
-        [f"Close_fwd_{h}" for h in horizons] +
-        [f"ret_{h}" for h in horizons] +
+        [f"Close_fwd_{h}" for h in horizons] + # type: ignore
+        [f"ret_{h}" for h in horizons] + # type: ignore
         ["TTP"]
     )
 
