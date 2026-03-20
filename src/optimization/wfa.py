@@ -1,31 +1,25 @@
 from __future__ import annotations
 import pandas as pd
-from .optimizer import run_optuna
-from .backtester import Backtester
+from optimizer import run_optuna
+from backtester import Backtester
 
 def walk_forward(
     df: pd.DataFrame,
     base_cfg: dict,
-    window_in: str = "730D",
-    window_out: str = "365D",
     trials: int = 100,
     target: str = "MAR"
 ):
-    win_in = pd.Timedelta(window_in)
-    win_out = pd.Timedelta(window_out)
-
+    
     t0 = df.index.min()
-    t1 = t0 + win_in
+    t1 = t0 + 365
     results = []
     out_equity = None
 
-    while t1 + win_out <= df.index.max():
+    while t1 + 730 <= df.index.max():
         train = df[(df.index >= t0) & (df.index < t1)]
         study = run_optuna(train, base_cfg, n_trials=trials, target=target)
         best_cfg = base_cfg.copy()
-        # аккуратная «встройка» найденных параметров
         for k, v in study.best_params.items():
-            # соответствие ключей см. optimizer.suggest_params
             if k == "gator_jaw":
                 best_cfg["indicators"]["alligator"]["jaw"] = v
             elif k == "gator_teeth":
@@ -43,12 +37,12 @@ def walk_forward(
             elif k == "score_thr":
                 best_cfg["rules"]["score_threshold"] = v
 
-        test = df[(df.index >= t1) & (df.index < t1 + win_out)]
+        test = df[(df.index >= t1) & (df.index < t1 + 730)]
         res = Backtester(test, best_cfg).run()
 
         results.append({
             "period_in": (t0, t1),
-            "period_out": (t1, t1 + win_out),
+            "period_out": (t1, t1 + 730),
             "equity": res["equity"],
             "cfg": best_cfg,
             "study_value": study.best_value
