@@ -1,6 +1,9 @@
-import pandas as pd
+import os
+import sys
+
 import numpy as np
-import sys, os
+import pandas as pd
+
 sys.path.append(os.path.abspath("../.."))
 from ..MLbridg.infer import apply_ml_filter
 
