@@ -1,8 +1,12 @@
-import pandas as pd
+import os
+import sys
+from pathlib import Path
+
 import numpy as np
-import sys, os
+import pandas as pd
+
 sys.path.append(os.path.abspath("../.."))
-from ..MLbridg.infer import apply_ml_filter
+from MLbridg.infer import apply_ml_filter
 
 name = "AFKS"
 df: pd.DataFrame = pd.read_csv(f"/Users/side/Desktop/Trading Chaos AI/df/clean_df/{name}.csv")

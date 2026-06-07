@@ -1,6 +1,7 @@
-import pandas as pd
 import numpy as np
-name = "AFKS"
+import pandas as pd
+
+name = "Gold"
 df: pd.DataFrame = pd.read_csv(f"/Users/side/Desktop/Trading Chaos AI/df/clean_df/{name}.csv")
 # -------- Флаги отладки --------
 CHECKS = True  # поставить False, если не нужны проверки ГО/добора

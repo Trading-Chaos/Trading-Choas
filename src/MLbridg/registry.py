@@ -1,4 +1,4 @@
-from .adapters.xgb_adapter import XGBAdapter
+from adapters.xgb_adapter import XGBAdapter
 
 def get_model(name: str):
 

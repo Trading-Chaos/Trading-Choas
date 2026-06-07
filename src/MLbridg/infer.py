@@ -1,4 +1,4 @@
-from .registry import get_model
+from registry import get_model
 
 def apply_ml_filter(
     df,

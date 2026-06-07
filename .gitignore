@@ -1,4 +1,6 @@
 # Виртуальное окружение
+.venv/
+.venv*/
 chaos_env/
 env/
 venv/
