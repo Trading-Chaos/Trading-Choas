@@ -33,6 +33,7 @@ logs/
 
 # Файлы окружения
 .env
+output/*.local.json*
 
 # Кэш
 __pycache__/

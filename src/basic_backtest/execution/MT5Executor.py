@@ -1,4 +1,20 @@
-import MetaTrader5 as mt5
+try:
+    import MetaTrader5 as mt5
+except ImportError as exc:  # pragma: no cover - MT5 is Windows-terminal bound.
+    mt5 = None
+    MT5_IMPORT_ERROR = exc
+else:
+    MT5_IMPORT_ERROR = None
+
+
+def require_mt5():
+    if mt5 is None:
+        raise RuntimeError(
+            "Python package MetaTrader5 is not available in this environment. "
+            "Run this executor on Windows with MetaTrader 5 installed."
+        ) from MT5_IMPORT_ERROR
+
+    return mt5
 
 
 class MT5Executor:
@@ -32,23 +48,48 @@ class MT5Executor:
             self._open_stop_entry(
                 side=event["side"],
                 volume=event["volume"],
-                stop_price=event["stop_main"]
+                entry_price=event.get("entry_price", event.get("stop_main")),
+                stop_loss=event.get("stop_loss", event.get("stop_main")),
             )
 
         elif action == "open_add":
             self._open_stop_entry(
                 side=event["side"],
                 volume=event["volume"],
-                stop_price=event["stop_add"]
+                entry_price=event.get("entry_price", event.get("stop_add")),
+                stop_loss=event.get("stop_loss", event.get("stop_add")),
             )
 
         elif action == "flip_close":
             self._close_position()
 
+    def has_position(self):
+        terminal = require_mt5()
+        positions = terminal.positions_get(symbol=self.symbol)
+        return positions is not None and len(positions) > 0
+
+    def has_pending_orders(self):
+        terminal = require_mt5()
+        orders = terminal.orders_get(symbol=self.symbol)
+        return orders is not None and len(orders) > 0
+
+    def has_exposure(self):
+        return self.has_position() or self.has_pending_orders()
+
+    def place_stop_entry(self, side, volume, entry_price, stop_loss=None):
+        return self._open_stop_entry(side, volume, entry_price, stop_loss=stop_loss)
+
+    def close_position(self):
+        return self._close_position()
+
+    def cancel_all_stops(self):
+        self._cancel_all_stops()
+
     # ======================================================
     # ROLL (ПЕРЕКЛАДКА)
     # ======================================================
     def roll_position(self, from_symbol, to_symbol, side, volume):
+        require_mt5()
 
         print(f"Rolling {from_symbol} -> {to_symbol}")
 
@@ -94,13 +135,10 @@ class MT5Executor:
     # ======================================================
     # STOP ENTRY (ВХОД ПО ПРОБОЮ)
     # ======================================================
-    def _open_stop_entry(self, side, volume, stop_price):
+    def _open_stop_entry(self, side, volume, entry_price, stop_loss=None):
+        require_mt5()
 
-        order_type = (
-            mt5.ORDER_TYPE_BUY_STOP
-            if side == 1
-            else mt5.ORDER_TYPE_SELL_STOP
-        )
+        order_type = mt5.ORDER_TYPE_BUY_STOP if side == 1 else mt5.ORDER_TYPE_SELL_STOP
 
         volume = self._normalize_volume(volume)
 
@@ -109,7 +147,7 @@ class MT5Executor:
             "symbol": self.symbol,
             "volume": volume,
             "type": order_type,
-            "price": stop_price,
+            "price": float(entry_price),
             "deviation": 20,
             "magic": self.magic,
             "comment": "STOP ENTRY",
@@ -117,17 +155,23 @@ class MT5Executor:
             "type_filling": mt5.ORDER_FILLING_RETURN,
         }
 
+        if stop_loss is not None:
+            request["sl"] = float(stop_loss)
+
         result = mt5.order_send(request)
 
         if result.retcode != mt5.TRADE_RETCODE_DONE:
             print("Stop entry failed:", result)
+            return result
         else:
             print("Stop entry placed")
+            return result
 
     # ======================================================
     # ЗАКРЫТИЕ ПОЗИЦИИ (NETTING)
     # ======================================================
     def _close_position(self):
+        require_mt5()
 
         positions = mt5.positions_get(symbol=self.symbol)
 
@@ -137,11 +181,7 @@ class MT5Executor:
         pos = positions[0]
 
         side = 1 if pos.type == 0 else -1
-        close_type = (
-            mt5.ORDER_TYPE_SELL
-            if side == 1
-            else mt5.ORDER_TYPE_BUY
-        )
+        close_type = mt5.ORDER_TYPE_SELL if side == 1 else mt5.ORDER_TYPE_BUY
 
         tick = mt5.symbol_info_tick(self.symbol)
         if tick is None:
@@ -175,6 +215,7 @@ class MT5Executor:
     # ОТМЕНА ВСЕХ СТОПОВ
     # ======================================================
     def _cancel_all_stops(self):
+        require_mt5()
 
         orders = mt5.orders_get(symbol=self.symbol)
 
@@ -183,15 +224,9 @@ class MT5Executor:
 
         for order in orders:
 
-            if order.type in (
-                mt5.ORDER_TYPE_BUY_STOP,
-                mt5.ORDER_TYPE_SELL_STOP
-            ):
+            if order.type in (mt5.ORDER_TYPE_BUY_STOP, mt5.ORDER_TYPE_SELL_STOP):
 
-                request = {
-                    "action": mt5.TRADE_ACTION_REMOVE,
-                    "order": order.ticket
-                }
+                request = {"action": mt5.TRADE_ACTION_REMOVE, "order": order.ticket}
 
                 mt5.order_send(request)
 
